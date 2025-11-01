@@ -13,9 +13,8 @@ export default function Home() {
         try {
             const { data } = await axios.post('/api/auth/login', { email, password });
 
-            // 1) localStorage (client pages use this)
+            // Store token so middleware & APIs can see it
             localStorage.setItem('token', data.token);
-            // 2) Plain cookie (so middleware/server sees it even in dev)
             try { document.cookie = `token=${data.token}; Path=/; SameSite=Lax`; } catch {}
 
             const role = data.user.role;
@@ -32,13 +31,24 @@ export default function Home() {
     return (
         <div className="min-h-screen grid place-items-center p-4">
             <div className="glass w-full max-w-md rounded-3xl p-8 space-y-6">
-                <h1 className="text-3xl font-bold">Welcome to AttendX</h1>
+                <h1 className="text-3xl font-bold">Super easy school attendance system</h1>
                 <p className="opacity-80 text-sm">
-                    Admin creates Teacher logins. Teachers create Student logins. Everyone signs in here.
+                    Please sign in with your email and password to continue.
                 </p>
                 <form onSubmit={onSubmit} className="space-y-4">
-                    <input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" />
-                    <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+                    <input
+                        placeholder="Email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        autoComplete="username"
+                    />
+                    <input
+                        type="password"
+                        placeholder="Password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        autoComplete="current-password"
+                    />
                     <button className="btn btn-primary w-full" disabled={loading} type="submit">
                         {loading ? 'Loading...' : 'Sign in'}
                     </button>

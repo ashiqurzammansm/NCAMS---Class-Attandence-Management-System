@@ -7,11 +7,15 @@ import { getRole } from '@/lib/clientAuth';
 export default function AdminPage() {
     const [allowed, setAllowed] = useState(false);
     const [teachers, setTeachers] = useState([]);
-    const [date, setDate] = useState(() => new Date().toISOString().slice(0,10)); // YYYY-MM-DD
+    const [date, setDate] = useState(() => new Date().toISOString().slice(0,10));
 
     const [tName, setTName] = useState('');
     const [tEmail, setTEmail] = useState('');
     const [tPass, setTPass] = useState('');
+
+    // export filters
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
 
     useEffect(() => {
         const r = getRole();
@@ -42,7 +46,7 @@ export default function AdminPage() {
             alert('Saved!');
         } catch (e) {
             if (e?.response?.status === 409) {
-                alert(`Duplicate! These teachers already have records for ${date}: ${e.response.data.duplicates.join(', ')}`);
+                alert(`Duplicate for ${date}: ${e.response.data.duplicates.join(', ')}`);
             } else {
                 alert('Error saving.');
             }
@@ -59,6 +63,15 @@ export default function AdminPage() {
             alert('Teacher created!');
         } catch { alert('Create teacher failed.'); }
     };
+
+    const exportTeachersCsv = () => {
+        const qs = new URLSearchParams();
+        if (dateFrom) qs.set('dateFrom', dateFrom);
+        if (dateTo) qs.set('dateTo', dateTo);
+        window.location.href = '/api/attendance/teachers/export?' + qs.toString();
+    };
+
+    const printPage = () => window.print();
 
     if (!allowed) return null;
 
@@ -102,6 +115,18 @@ export default function AdminPage() {
                                 </div>
                             </div>
                         ))}
+                    </div>
+                </div>
+
+                {/* Export & Print */}
+                <div className="card space-y-3">
+                    <div className="flex items-center gap-2">
+                        <label className="opacity-80 text-sm">From</label>
+                        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="px-3 py-2 rounded-xl bg-white/10" />
+                        <label className="opacity-80 text-sm">To</label>
+                        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="px-3 py-2 rounded-xl bg-white/10" />
+                        <button className="btn" onClick={exportTeachersCsv}>Export Teachers CSV</button>
+                        <button className="btn btn-primary" onClick={printPage}>Print</button>
                     </div>
                 </div>
             </div>

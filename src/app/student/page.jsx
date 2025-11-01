@@ -7,7 +7,10 @@ import { getRole } from '@/lib/clientAuth';
 export default function StudentPage() {
     const [allowed, setAllowed] = useState(false);
     const [me, setMe] = useState(null);
-    const [semester, setSemester] = useState(''); // auto-filled after load
+
+    const [semester, setSemester] = useState('');
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
     const [summary, setSummary] = useState(null);
 
     useEffect(() => {
@@ -26,20 +29,31 @@ export default function StudentPage() {
             const meRes = await fetch('/api/auth/me').then(r => r.json());
             if (meRes?.ok) setMe(meRes.user);
 
-            // first call w/out query to get default semester from API
+            // initial load for default semester
             const res = await fetch('/api/student-attendance/me').then(r => r.json());
             if (res?.semester) setSemester(res.semester);
             setSummary(res);
         })();
     }, [allowed]);
 
-    useEffect(() => {
-        if (!allowed || !semester) return;
-        (async () => {
-            const res = await fetch(`/api/student-attendance/me?semester=${encodeURIComponent(semester)}`).then(r => r.json());
-            setSummary(res);
-        })();
-    }, [semester, allowed]);
+    const refresh = async () => {
+        const qs = new URLSearchParams();
+        if (semester) qs.set('semester', semester);
+        const res = await fetch('/api/student-attendance/me?' + qs.toString()).then(r => r.json());
+        setSummary(res);
+    };
+
+    const exportCsv = () => {
+        const qs = new URLSearchParams();
+        if (semester) qs.set('semester', semester);
+        if (dateFrom) qs.set('dateFrom', dateFrom);
+        if (dateTo) qs.set('dateTo', dateTo);
+        window.location.href = '/api/student-attendance/me/export?' + qs.toString();
+    };
+
+    const printPage = () => window.print();
+
+    useEffect(() => { if (allowed && semester) refresh(); }, [semester]); // eslint-disable-line
 
     if (!allowed) return null;
 
@@ -51,14 +65,23 @@ export default function StudentPage() {
                     <p className="opacity-80">Welcome{me?.name ? `, ${me.name}` : ''}!</p>
                 </div>
 
-                <div className="card space-y-3">
-                    <div className="flex items-center justify-between">
-                        <h2 className="text-xl font-semibold">My Attendance (Semester)</h2>
-                        <select value={semester} onChange={e => setSemester(e.target.value)} className="px-3 py-2 rounded-xl bg-white/10">
-                            {/* common semester names; API filters by whatever you select */}
-                            <option value={semester || ''}>{semester || 'Select semester'}</option>
-                            <option>Fall-2025</option><option>Spring-2026</option><option>Summer-2026</option>
-                        </select>
+                <div className="card space-y-4">
+                    <div className="flex flex-col md:flex-row md:items-center gap-3 justify-between">
+                        <div className="flex items-center gap-2">
+                            <label className="opacity-80 text-sm">Semester</label>
+                            <select value={semester} onChange={e => setSemester(e.target.value)} className="px-3 py-2 rounded-xl bg-white/10">
+                                <option value={semester || ''}>{semester || 'Select semester'}</option>
+                                <option>Fall-2025</option><option>Spring-2026</option><option>Summer-2026</option>
+                            </select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <label className="opacity-80 text-sm">From</label>
+                            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="px-3 py-2 rounded-xl bg-white/10" />
+                            <label className="opacity-80 text-sm">To</label>
+                            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="px-3 py-2 rounded-xl bg-white/10" />
+                            <button className="btn" onClick={exportCsv}>Export CSV</button>
+                            <button className="btn btn-primary" onClick={printPage}>Print</button>
+                        </div>
                     </div>
 
                     {summary ? (
@@ -66,8 +89,13 @@ export default function StudentPage() {
                             <div className="opacity-90">
                                 {summary.semester} — Total: {summary.total}, Present: {summary.present}, Late: {summary.late}, Excused: {summary.excused}, Absent: {summary.absent} — Overall: <b>{summary.percent}%</b>
                             </div>
-                            <ul className="mt-2 space-y-1 opacity-90 max-h-64 overflow-auto pr-2">
-                                {summary.rows?.slice(0, 60).map((r, i) => (
+                            <ul className="mt-2 space-y-1 opacity-90 max-h-96 overflow-auto pr-2 print:max-h-none">
+                                {summary.rows?.filter(r => {
+                                    // client-side date filter for the list (export uses server filter)
+                                    if (dateFrom && r.date < dateFrom) return false;
+                                    if (dateTo && r.date > dateTo) return false;
+                                    return true;
+                                }).map((r, i) => (
                                     <li key={i}>{r.date} — <b>{r.status}</b></li>
                                 ))}
                             </ul>

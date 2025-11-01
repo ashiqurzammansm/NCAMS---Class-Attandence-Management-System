@@ -6,18 +6,24 @@ import { getRole } from '@/lib/clientAuth';
 
 export default function TeacherPage() {
     const [allowed, setAllowed] = useState(false);
+
+    // student taking
     const [roster, setRoster] = useState([]);
     const [date, setDate] = useState(() => new Date().toISOString().slice(0,10)); // YYYY-MM-DD
-    const [month, setMonth] = useState(() => new Date().toISOString().slice(0,7)); // YYYY-MM
+    const [semesterForExport, setSemesterForExport] = useState('');
 
-    // create-student form
+    // self summary
+    const [month, setMonth] = useState(() => new Date().toISOString().slice(0,7)); // YYYY-MM
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
+    const [selfSummary, setSelfSummary] = useState(null);
+
+    // create student
     const [sName, setSName] = useState('');
     const [sEmail, setSEmail] = useState('');
     const [sPass, setSPass] = useState('');
     const [sId, setSId] = useState('');
     const [sSem, setSSem] = useState('Fall-2025');
-
-    const [selfSummary, setSelfSummary] = useState(null);
 
     useEffect(() => {
         const r = getRole();
@@ -56,7 +62,7 @@ export default function TeacherPage() {
             alert('Saved!');
         } catch (e) {
             if (e?.response?.status === 409) {
-                alert(`Duplicate! These students already have records for ${date}: ${e.response.data.duplicates.join(', ')}`);
+                alert(`Duplicate! Already recorded for ${date}: ${e.response.data.duplicates.join(', ')}`);
             } else {
                 alert('Error saving.');
             }
@@ -75,6 +81,23 @@ export default function TeacherPage() {
             alert('Student created!');
         } catch { alert('Create student failed.'); }
     };
+
+    const exportSelfCsv = () => {
+        const qs = new URLSearchParams();
+        if (dateFrom) qs.set('dateFrom', dateFrom);
+        if (dateTo) qs.set('dateTo', dateTo);
+        window.location.href = '/api/teacher-attendance/me/export?' + qs.toString();
+    };
+
+    const exportStudentsCsv = () => {
+        const qs = new URLSearchParams();
+        if (semesterForExport) qs.set('semester', semesterForExport);
+        if (dateFrom) qs.set('dateFrom', dateFrom);
+        if (dateTo) qs.set('dateTo', dateTo);
+        window.location.href = '/api/attendance/students/export?' + qs.toString();
+    };
+
+    const printPage = () => window.print();
 
     if (!allowed) return null;
 
@@ -109,7 +132,6 @@ export default function TeacherPage() {
                             <button className="btn btn-primary" onClick={save}>Save</button>
                         </div>
                     </div>
-
                     <div className="grid gap-2">
                         {roster.map(s => (
                             <div key={s.id} className="flex items-center justify-between glass rounded-2xl px-4 py-3">
@@ -127,21 +149,44 @@ export default function TeacherPage() {
                     </div>
                 </div>
 
-                {/* My Attendance (month-wise) */}
+                {/* My Attendance (Month + Filters) */}
                 <div className="card space-y-3">
-                    <div className="flex items-center justify-between">
-                        <h2 className="text-xl font-semibold">My Attendance (Month)</h2>
-                        <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="px-3 py-2 rounded-xl bg-white/10" />
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <h2 className="text-xl font-semibold">My Attendance (Month)</h2>
+                            <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="px-3 py-2 rounded-xl bg-white/10" />
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <label className="opacity-80 text-sm">From</label>
+                            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="px-3 py-2 rounded-xl bg-white/10" />
+                            <label className="opacity-80 text-sm">To</label>
+                            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="px-3 py-2 rounded-xl bg-white/10" />
+                            <button className="btn" onClick={exportSelfCsv}>Export My CSV</button>
+                            <button className="btn" onClick={exportStudentsCsv}>Export Students CSV</button>
+                            <select value={semesterForExport} onChange={e => setSemesterForExport(e.target.value)} className="px-3 py-2 rounded-xl bg-white/10">
+                                <option value="">(All Semesters)</option>
+                                <option>Fall-2025</option><option>Spring-2026</option><option>Summer-2026</option>
+                            </select>
+                            <button className="btn btn-primary" onClick={printPage}>Print</button>
+                        </div>
                     </div>
+
                     {selfSummary ? (
                         <>
                             <div className="opacity-90">
                                 {selfSummary.month} — Total: {selfSummary.total}, Present: {selfSummary.present}, Late: {selfSummary.late}, Excused: {selfSummary.excused}, Absent: {selfSummary.absent} — Overall: <b>{selfSummary.percent}%</b>
                             </div>
-                            <ul className="mt-2 space-y-1 opacity-90 max-h-48 overflow-auto pr-2">
-                                {selfSummary.rows.slice(0, 30).map((r, i) => (
-                                    <li key={i}>{r.date} — <b>{r.status}</b></li>
-                                ))}
+                            <ul className="mt-2 space-y-1 opacity-90 max-h-64 overflow-auto pr-2 print:max-h-none">
+                                {selfSummary.rows
+                                    ?.filter(r => {
+                                        if (dateFrom && r.date < dateFrom) return false;
+                                        if (dateTo && r.date > dateTo) return false;
+                                        return true;
+                                    })
+                                    .slice(0, 300)
+                                    .map((r, i) => (
+                                        <li key={i}>{r.date} — <b>{r.status}</b></li>
+                                    ))}
                             </ul>
                         </>
                     ) : <div className="opacity-70">No records.</div>}
