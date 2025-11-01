@@ -1,18 +1,20 @@
 export const runtime = 'nodejs';
 
 import { dbConnect } from '@/lib/db';
-import User from '@/lib/models/User';
 import { getUserFromRequest } from '@/lib/auth';
-import { can } from '@/lib/rbac';
+import User from '@/lib/models/User';
 
 export async function GET(request) {
-    const user = getUserFromRequest(request);
-    if (!user) return new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401 });
-    if (!can(user.role, 'users:manage_teachers')) {
+    const me = getUserFromRequest(request);
+    if (!me) return new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401 });
+    if (me.role !== 'institute_admin' && me.role !== 'teacher')
         return new Response(JSON.stringify({ message: 'Forbidden' }), { status: 403 });
-    }
 
     await dbConnect();
-    const teachers = await User.find({ role: 'teacher' }).select('_id name email role').sort({ name: 1 }).lean();
-    return new Response(JSON.stringify(teachers), { status: 200 });
+    const list = await User.find({ role: 'teacher' })
+        .select('_id name email facultyId')
+        .sort({ name: 1 })
+        .lean();
+
+    return new Response(JSON.stringify(list), { status: 200 });
 }

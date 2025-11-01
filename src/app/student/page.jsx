@@ -7,11 +7,10 @@ import { getRole } from '@/lib/clientAuth';
 export default function StudentPage() {
     const [allowed, setAllowed] = useState(false);
     const [me, setMe] = useState(null);
-
     const [semester, setSemester] = useState('');
+    const [summary, setSummary] = useState(null);
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
-    const [summary, setSummary] = useState(null);
 
     useEffect(() => {
         const r = getRole();
@@ -29,19 +28,19 @@ export default function StudentPage() {
             const meRes = await fetch('/api/auth/me').then(r => r.json());
             if (meRes?.ok) setMe(meRes.user);
 
-            // initial load for default semester
             const res = await fetch('/api/student-attendance/me').then(r => r.json());
             if (res?.semester) setSemester(res.semester);
             setSummary(res);
         })();
     }, [allowed]);
 
-    const refresh = async () => {
-        const qs = new URLSearchParams();
-        if (semester) qs.set('semester', semester);
-        const res = await fetch('/api/student-attendance/me?' + qs.toString()).then(r => r.json());
-        setSummary(res);
-    };
+    useEffect(() => {
+        if (!allowed || !semester) return;
+        (async () => {
+            const res = await fetch(`/api/student-attendance/me?semester=${encodeURIComponent(semester)}`).then(r => r.json());
+            setSummary(res);
+        })();
+    }, [semester, allowed]);
 
     const exportCsv = () => {
         const qs = new URLSearchParams();
@@ -53,8 +52,6 @@ export default function StudentPage() {
 
     const printPage = () => window.print();
 
-    useEffect(() => { if (allowed && semester) refresh(); }, [semester]); // eslint-disable-line
-
     if (!allowed) return null;
 
     return (
@@ -62,7 +59,10 @@ export default function StudentPage() {
             <div className="space-y-6">
                 <div>
                     <h1 className="text-3xl md:text-4xl font-bold">Student Dashboard</h1>
-                    <p className="opacity-80">Welcome{me?.name ? `, ${me.name}` : ''}!</p>
+                    <p className="opacity-80">
+                        Welcome{me?.name ? `, ${me.name}` : ''}!
+                        {summary?.studentId ? <span className="ml-2">• <b>ID:</b> {summary.studentId}</span> : null}
+                    </p>
                 </div>
 
                 <div className="card space-y-4">
@@ -91,7 +91,6 @@ export default function StudentPage() {
                             </div>
                             <ul className="mt-2 space-y-1 opacity-90 max-h-96 overflow-auto pr-2 print:max-h-none">
                                 {summary.rows?.filter(r => {
-                                    // client-side date filter for the list (export uses server filter)
                                     if (dateFrom && r.date < dateFrom) return false;
                                     if (dateTo && r.date > dateTo) return false;
                                     return true;

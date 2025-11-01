@@ -13,15 +13,20 @@ export default function Home() {
         try {
             const { data } = await axios.post('/api/auth/login', { email, password });
 
-            // Store token so middleware & APIs can see it
+            // Store token for client pages (used by axios Authorization header)
             localStorage.setItem('token', data.token);
-            try { document.cookie = `token=${data.token}; Path=/; SameSite=Lax`; } catch {}
+
+            // DEV-only fallback cookie so middleware sees the token reliably during local dev.
+            // In production, rely on the HttpOnly cookie set by the API response.
+            if (process.env.NODE_ENV !== 'production') {
+                try { document.cookie = `token=${data.token}; Path=/; SameSite=Lax`; } catch {}
+            }
 
             const role = data.user.role;
             if (role === 'institute_admin') window.location.href = '/admin';
             else if (role === 'teacher') window.location.href = '/teacher';
             else window.location.href = '/student';
-        } catch (e) {
+        } catch {
             alert('❌ Login failed! Please check your email or password.');
         } finally {
             setLoading(false);
@@ -32,9 +37,8 @@ export default function Home() {
         <div className="min-h-screen grid place-items-center p-4">
             <div className="glass w-full max-w-md rounded-3xl p-8 space-y-6">
                 <h1 className="text-3xl font-bold">Super easy school attendance system</h1>
-                <p className="opacity-80 text-sm">
-                    Please sign in with your email and password to continue.
-                </p>
+                <p className="opacity-80 text-sm">Please sign in with your email and password to continue.</p>
+
                 <form onSubmit={onSubmit} className="space-y-4">
                     <input
                         placeholder="Email"

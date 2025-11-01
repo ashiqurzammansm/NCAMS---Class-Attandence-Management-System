@@ -1,47 +1,59 @@
 export const runtime = 'nodejs';
 
 import { dbConnect } from '@/lib/db';
+import { getUserFromRequest } from '@/lib/auth';
 import User from '@/lib/models/User';
 import Student from '@/lib/models/Student';
 import bcrypt from 'bcryptjs';
-import { getUserFromRequest } from '@/lib/auth';
+
+function isSID(v) {
+    return /^SID\d{5}$/.test(v || '');
+}
 
 export async function POST(request) {
-    const actor = getUserFromRequest(request);
-    if (!actor) {
-        return new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401 });
-    }
-    // Admin or Teacher can create a student login
-    if (actor.role !== 'institute_admin' && actor.role !== 'teacher') {
+    const me = getUserFromRequest(request);
+    if (!me) return new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401 });
+    if (me.role !== 'teacher' && me.role !== 'institute_admin') {
         return new Response(JSON.stringify({ message: 'Forbidden' }), { status: 403 });
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const { name, email, password, studentId, semester } = body || {};
+
+    if (!name || !email || !password || !studentId || !semester) {
+        return new Response(JSON.stringify({ message: 'name, email, password, studentId, semester required' }), { status: 400 });
+    }
+    if (!isSID(studentId)) {
+        return new Response(JSON.stringify({ message: 'studentId must match SID00001 format' }), { status: 400 });
     }
 
     await dbConnect();
 
-    const body = await request.json().catch(() => ({}));
-    const { name, email, password, studentId, semester } = body || {};
-    if (!name || !email || !password || !studentId || !semester) {
-        return new Response(JSON.stringify({ message: 'name, email, password, studentId, semester required' }), { status: 400 });
-    }
-
-    // Create/Update User (role=student)
     const passwordHash = await bcrypt.hash(password, 10);
-    const userDoc = await User.findOneAndUpdate(
-        { email },
-        { name, role: 'student', passwordHash },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-    ).lean();
 
-    // Create/Update Student “card” record
-    const studentDoc = await Student.findOneAndUpdate(
-        { studentId },
-        { name, semester, email },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-    ).lean();
+    try {
+        // create the auth user
+        await User.create({
+            name,
+            email,
+            passwordHash,
+            role: 'student',
+        });
 
-    return new Response(JSON.stringify({
-        ok: true,
-        user: { id: String(userDoc._id), name: userDoc.name, email: userDoc.email, role: userDoc.role },
-        student: studentDoc
-    }), { status: 200 });
+        // create student card
+        await Student.create({
+            name,
+            email,
+            studentId,
+            semester,
+        });
+
+        return new Response(JSON.stringify({ ok: true }), { status: 201 });
+    } catch (e) {
+        if (e?.code === 11000) {
+            const field = e?.keyPattern?.email ? 'email' : e?.keyPattern?.studentId ? 'studentId' : 'unique';
+            return new Response(JSON.stringify({ ok: false, message: `Duplicate ${field}` }), { status: 409 });
+        }
+        return new Response(JSON.stringify({ ok: false, message: 'Create failed' }), { status: 500 });
+    }
 }

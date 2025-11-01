@@ -22,7 +22,7 @@ export default function TeacherPage() {
     const [sName, setSName] = useState('');
     const [sEmail, setSEmail] = useState('');
     const [sPass, setSPass] = useState('');
-    const [sId, setSId] = useState('');
+    const [sId, setSId] = useState(''); // will be suggested
     const [sSem, setSSem] = useState('Fall-2025');
 
     useEffect(() => {
@@ -33,15 +33,21 @@ export default function TeacherPage() {
         else window.location.replace('/');
     }, []);
 
-    useEffect(() => {
-        if (!allowed) return;
+    const authAxios = () => {
         const t = localStorage.getItem('token');
         if (t) axios.defaults.headers.common['Authorization'] = `Bearer ${t}`;
+    };
 
-        (async () => {
-            const { data: students } = await axios.get('/api/students');
-            setRoster(students.map(s => ({ id: s.studentId, name: s.name, semester: s.semester })));
-        })();
+    const loadRoster = async () => {
+        authAxios();
+        const { data: students } = await axios.get('/api/students');
+        setRoster(students.map(s => ({ id: s.studentId, name: s.name, semester: s.semester })));
+    };
+
+    useEffect(() => {
+        if (!allowed) return;
+        authAxios();
+        loadRoster();
 
         (async () => {
             const { data } = await axios.get(`/api/teacher-attendance/me?month=${month}`);
@@ -55,6 +61,7 @@ export default function TeacherPage() {
     const save = async () => {
         if (!date) return alert('Pick a date first!');
         try {
+            authAxios();
             await axios.post('/api/attendance/students', {
                 date,
                 rows: roster.map(s => ({ studentId: s.id, status: s.status || 'absent' })),
@@ -72,14 +79,40 @@ export default function TeacherPage() {
     const createStudent = async (e) => {
         e.preventDefault();
         try {
+            authAxios();
             await axios.post('/api/users/students', {
                 name: sName, email: sEmail, password: sPass, studentId: sId, semester: sSem
             });
             setSName(''); setSEmail(''); setSPass(''); setSId('');
-            const { data: students } = await axios.get('/api/students');
-            setRoster(students.map(s => ({ id: s.studentId, name: s.name, semester: s.semester })));
+            await loadRoster();
             alert('Student created!');
-        } catch { alert('Create student failed.'); }
+        } catch (err) {
+            const msg = err?.response?.data?.message || 'Create student failed.';
+            alert(msg);
+        }
+    };
+
+    const deleteStudent = async (studentId) => {
+        if (!confirm('Delete this student user and all their attendance?')) return;
+        try {
+            authAxios();
+            await axios.delete(`/api/users/students/${studentId}`);
+            await loadRoster();
+            alert('Deleted.');
+        } catch {
+            alert('Delete failed.');
+        }
+    };
+
+    const suggestSID = async () => {
+        try {
+            authAxios();
+            const { data } = await axios.get('/api/users/students/next-student-id');
+            if (data?.ok && data?.next) setSId(data.next);
+            else alert(data?.message || 'Could not suggest Student ID.');
+        } catch {
+            alert('Suggestion failed.');
+        }
     };
 
     const exportSelfCsv = () => {
@@ -109,19 +142,30 @@ export default function TeacherPage() {
                 {/* Create Student Login */}
                 <div className="card space-y-4">
                     <h2 className="text-xl font-semibold">Create Student Login</h2>
-                    <form onSubmit={createStudent} className="grid md:grid-cols-5 gap-3">
+                    <form onSubmit={createStudent} className="grid md:grid-cols-6 gap-3">
                         <input placeholder="Student Name" value={sName} onChange={e => setSName(e.target.value)} />
                         <input placeholder="Student Email" value={sEmail} onChange={e => setSEmail(e.target.value)} />
-                        <input placeholder="Student ID (e.g., s-001)" value={sId} onChange={e => setSId(e.target.value)} />
+                        <div className="flex gap-2 md:col-span-2">
+                            <input
+                                placeholder="Student ID (SID00001)"
+                                value={sId}
+                                onChange={e => setSId((e.target.value || '').toUpperCase())}
+                                className="flex-1"
+                            />
+                            <button className="btn" type="button" onClick={suggestSID}>Suggest ID</button>
+                        </div>
                         <select value={sSem} onChange={e => setSSem(e.target.value)}>
                             <option>Fall-2025</option><option>Spring-2026</option><option>Summer-2026</option>
                         </select>
                         <input type="password" placeholder="Password" value={sPass} onChange={e => setSPass(e.target.value)} />
-                        <button className="btn btn-primary md:col-span-5" type="submit">Create Student</button>
+                        <button className="btn btn-primary" type="submit">Create Student</button>
                     </form>
+                    <p className="text-xs opacity-70">
+                        Student ID must match <b>SID00001</b> pattern. Use <i>Suggest ID</i> to auto-fill the next available one.
+                    </p>
                 </div>
 
-                {/* Take Students' Attendance (date required) */}
+                {/* Take Students' Attendance */}
                 <div className="card space-y-4">
                     <div className="flex items-center justify-between">
                         <h2 className="text-xl font-semibold">Take Students’ Attendance</h2>
@@ -143,6 +187,7 @@ export default function TeacherPage() {
                                     {['present','late','excused','absent'].map(st => (
                                         <button key={st} onClick={() => mark(s.id, st)} className={`btn ${s.status===st?'btn-primary':'bg-white/10'}`}>{st}</button>
                                     ))}
+                                    <button className="btn bg-red-600/80 hover:bg-red-600" onClick={() => deleteStudent(s.id)}>Delete</button>
                                 </div>
                             </div>
                         ))}
