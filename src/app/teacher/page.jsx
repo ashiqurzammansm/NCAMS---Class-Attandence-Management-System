@@ -1,0 +1,152 @@
+'use client';
+import Shell from '@/components/Shell';
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+import { getRole } from '@/lib/clientAuth';
+
+export default function TeacherPage() {
+    const [allowed, setAllowed] = useState(false);
+    const [roster, setRoster] = useState([]);
+    const [date, setDate] = useState(() => new Date().toISOString().slice(0,10)); // YYYY-MM-DD
+    const [month, setMonth] = useState(() => new Date().toISOString().slice(0,7)); // YYYY-MM
+
+    // create-student form
+    const [sName, setSName] = useState('');
+    const [sEmail, setSEmail] = useState('');
+    const [sPass, setSPass] = useState('');
+    const [sId, setSId] = useState('');
+    const [sSem, setSSem] = useState('Fall-2025');
+
+    const [selfSummary, setSelfSummary] = useState(null);
+
+    useEffect(() => {
+        const r = getRole();
+        if (r === 'teacher') setAllowed(true);
+        else if (r === 'institute_admin') window.location.replace('/admin');
+        else if (r === 'student') window.location.replace('/student');
+        else window.location.replace('/');
+    }, []);
+
+    useEffect(() => {
+        if (!allowed) return;
+        const t = localStorage.getItem('token');
+        if (t) axios.defaults.headers.common['Authorization'] = `Bearer ${t}`;
+
+        (async () => {
+            const { data: students } = await axios.get('/api/students');
+            setRoster(students.map(s => ({ id: s.studentId, name: s.name, semester: s.semester })));
+        })();
+
+        (async () => {
+            const { data } = await axios.get(`/api/teacher-attendance/me?month=${month}`);
+            setSelfSummary(data);
+        })().catch(()=>{});
+    }, [allowed, month]);
+
+    const mark = (id, status) => setRoster(r => r.map(s => (s.id === id ? { ...s, status } : s)));
+    const markAll = (st) => setRoster(r => r.map(s => ({ ...s, status: st })));
+
+    const save = async () => {
+        if (!date) return alert('Pick a date first!');
+        try {
+            await axios.post('/api/attendance/students', {
+                date,
+                rows: roster.map(s => ({ studentId: s.id, status: s.status || 'absent' })),
+            });
+            alert('Saved!');
+        } catch (e) {
+            if (e?.response?.status === 409) {
+                alert(`Duplicate! These students already have records for ${date}: ${e.response.data.duplicates.join(', ')}`);
+            } else {
+                alert('Error saving.');
+            }
+        }
+    };
+
+    const createStudent = async (e) => {
+        e.preventDefault();
+        try {
+            await axios.post('/api/users/students', {
+                name: sName, email: sEmail, password: sPass, studentId: sId, semester: sSem
+            });
+            setSName(''); setSEmail(''); setSPass(''); setSId('');
+            const { data: students } = await axios.get('/api/students');
+            setRoster(students.map(s => ({ id: s.studentId, name: s.name, semester: s.semester })));
+            alert('Student created!');
+        } catch { alert('Create student failed.'); }
+    };
+
+    if (!allowed) return null;
+
+    return (
+        <Shell>
+            <div className="space-y-8">
+                <div><h1 className="text-3xl md:text-4xl font-bold">Teacher</h1></div>
+
+                {/* Create Student Login */}
+                <div className="card space-y-4">
+                    <h2 className="text-xl font-semibold">Create Student Login</h2>
+                    <form onSubmit={createStudent} className="grid md:grid-cols-5 gap-3">
+                        <input placeholder="Student Name" value={sName} onChange={e => setSName(e.target.value)} />
+                        <input placeholder="Student Email" value={sEmail} onChange={e => setSEmail(e.target.value)} />
+                        <input placeholder="Student ID (e.g., s-001)" value={sId} onChange={e => setSId(e.target.value)} />
+                        <select value={sSem} onChange={e => setSSem(e.target.value)}>
+                            <option>Fall-2025</option><option>Spring-2026</option><option>Summer-2026</option>
+                        </select>
+                        <input type="password" placeholder="Password" value={sPass} onChange={e => setSPass(e.target.value)} />
+                        <button className="btn btn-primary md:col-span-5" type="submit">Create Student</button>
+                    </form>
+                </div>
+
+                {/* Take Students' Attendance (date required) */}
+                <div className="card space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-xl font-semibold">Take Students’ Attendance</h2>
+                        <div className="flex items-center gap-2">
+                            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="px-3 py-2 rounded-xl bg-white/10" />
+                            <button className="btn" onClick={() => markAll('present')}>All Present</button>
+                            <button className="btn" onClick={() => markAll('absent')}>All Absent</button>
+                            <button className="btn btn-primary" onClick={save}>Save</button>
+                        </div>
+                    </div>
+
+                    <div className="grid gap-2">
+                        {roster.map(s => (
+                            <div key={s.id} className="flex items-center justify-between glass rounded-2xl px-4 py-3">
+                                <div>
+                                    <div className="font-medium">{s.name}</div>
+                                    <div className="opacity-70 text-sm">{s.semester} • {s.id}</div>
+                                </div>
+                                <div className="space-x-2">
+                                    {['present','late','excused','absent'].map(st => (
+                                        <button key={st} onClick={() => mark(s.id, st)} className={`btn ${s.status===st?'btn-primary':'bg-white/10'}`}>{st}</button>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* My Attendance (month-wise) */}
+                <div className="card space-y-3">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-xl font-semibold">My Attendance (Month)</h2>
+                        <input type="month" value={month} onChange={e => setMonth(e.target.value)} className="px-3 py-2 rounded-xl bg-white/10" />
+                    </div>
+                    {selfSummary ? (
+                        <>
+                            <div className="opacity-90">
+                                {selfSummary.month} — Total: {selfSummary.total}, Present: {selfSummary.present}, Late: {selfSummary.late}, Excused: {selfSummary.excused}, Absent: {selfSummary.absent} — Overall: <b>{selfSummary.percent}%</b>
+                            </div>
+                            <ul className="mt-2 space-y-1 opacity-90 max-h-48 overflow-auto pr-2">
+                                {selfSummary.rows.slice(0, 30).map((r, i) => (
+                                    <li key={i}>{r.date} — <b>{r.status}</b></li>
+                                ))}
+                            </ul>
+                        </>
+                    ) : <div className="opacity-70">No records.</div>}
+                </div>
+            </div>
+        </Shell>
+    );
+}
