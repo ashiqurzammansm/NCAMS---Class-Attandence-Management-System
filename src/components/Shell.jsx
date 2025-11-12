@@ -47,7 +47,7 @@ export default function Shell({ children }) {
                 <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className="h-8 w-8 rounded-xl bg-white/10 grid place-items-center">A</div>
-                        <div className="text-lg font-bold">AttendX</div>
+                        <div className="text-lg font-bold">DIIT</div>
                     </div>
                     <div className="flex items-center gap-2">
                         <nav className="flex items-center gap-2 md:hidden">
